@@ -1,0 +1,27 @@
+#!/bin/bash
+read oldrev newrev refname
+#echo -e "$oldrev \n $newrev \n $refname \n $BANCH"
+
+if [ "$BRANCH" == "" ]; then
+    echo -e "This only works if given a git branch."
+    echo -e "Git tags may be supported soon."
+    exit 1
+fi
+BRANCH=${refname#refs/heads/} 
+
+# We're in the .git folder so ../ is the root of the repo
+# ../../ is where we will make a directory with the branch name
+
+site=../../$BRANCH
+#TODO check for site if not exists...
+# 1 create vhost
+# 2 graceful restart apache
+# 3 clone Jenkins job
+
+#Blast previous code
+rm -rf $site/*
+mkdir -p $site
+#export HEAD of branch into site
+git archive $BRANCH | tar -xC $site
+#call Jenkins build
+curl --silent http://localhost:9090/job/$BRANCH/build
