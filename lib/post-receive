@@ -1,27 +1,45 @@
 #!/bin/bash
 read oldrev newrev refname
-#echo -e "$oldrev \n $newrev \n $refname \n $BANCH"
+BRANCH=${refname#refs/heads/} 
+REPO=`pwd | sed 's#.*/\(.*\)/.git$#\1#'`
 
+#echo -e "$REPO \n $oldrev \n $newrev \n $refname" >>/home/sappletsjenkins/log
 if [ "$BRANCH" == "" ]; then
     echo -e "This only works if given a git branch."
-    echo -e "Git tags may be supported soon."
     exit 1
 fi
-BRANCH=${refname#refs/heads/} 
 
 # We're in the .git folder so ../ is the root of the repo
 # ../../ is where we will make a directory with the branch name
+SITE=../../../site/$REPO-$BRANCH
 
-site=../../$BRANCH
-#TODO check for site if not exists...
-# 1 create vhost
-# 2 graceful restart apache
-# 3 clone Jenkins job
+# If this is a new site we have some setup to do
+if [ ! -d "$SITE" ]; then
+	
+	# 1 create vhost
+	../../../repo/$REPO/bin/generate_vhost $BRANCH dev |\
+		sed "s#repo/$REPO/#site/$REPO-$BRANCH/#g" |\
+		sed "s#dthurman#sappletsjenkins#g" \
+		>../../../vhost/$REPO-$BRANCH.conf
+	
+	# 2 graceful restart apache
+	#sudo service httpd graceful
 
-#Blast previous code
-rm -rf $site/*
-mkdir -p $site
-#export HEAD of branch into site
-git archive $BRANCH | tar -xC $site
-#call Jenkins build
-curl --silent http://localhost:9090/job/$BRANCH/build
+	# 3 clone Jenkins job
+	XML='/home/sappletsjenkins/temp.xml'
+	curl -X GET http://localhost:7080/job/$REPO-template/config.xml  | sed "s/BRANCH_NAME/$BRANCH/g" > "$XML"
+	curl -X POST -H "Content-Type: text/xml" --data-binary "@$XML" "http://localhost:7080/createItem?name=$REPO-$BRANCH"
+	rm $XML
+fi
+
+# Blast previous code
+rm -rf $SITE/*
+
+# Make directory if it doesn't exist
+mkdir -p $SITE
+
+# Export HEAD of branch into site
+git archive $BRANCH | tar -xC $SITE
+
+# Call Jenkins build
+curl --silent http://localhost:7080/job/$REPO-$BRANCH/build
