@@ -8,38 +8,52 @@ if [ "$BRANCH" == "" ]; then
     echo -e "This only works if given a git branch."
     exit 1
 fi
+HOST=`hostname`
+JENKINS_PORT=6080
+#TODO ??? How can I read the environment variable $JENKINS_PORT that is set in /home/buildbot/.bash_profile
+
+echo "Received push, building now.."
 
 # We're in the .git folder so ../ is the root of the repo
 # ../../ is where we will make a directory with the branch name
 SITE=../../../site/$REPO-$BRANCH
 
+#		sed 's#repo/$REPO/#site/$REPO-$BRANCH/#g' |\
+#		sed 's#dthurman#buildbot#g' \
 # If this is a new site we have some setup to do
 if [ ! -d "$SITE" ]; then
-	
+	echo "First time building, setting up job and test site now..."	
 	# 1 create vhost
-	../../../repo/$REPO/bin/generate_vhost $BRANCH dev |\
-		sed "s#repo/$REPO/#site/$REPO-$BRANCH/#g" |\
-		sed "s#dthurman#sappletsjenkins#g" \
-		>../../../vhost/$REPO-$BRANCH.conf
+	sudo -u buildbot sh -c "../../../repo/$REPO/bin/generate_vhost $BRANCH dev |\
+		sed 's#repo/$REPO/#site/$REPO-$BRANCH/#g' |\
+		sed 's#dthurman#buildbot#g' \
+		>../../../vhost/$REPO-$BRANCH.conf"
+	sudo -u buildbot sh -c"cd ../../../site/$REPO-$BRANCH ; make setup_ci"
 	
 	# 2 graceful restart apache
-	#sudo service httpd graceful
+	sudo service httpd graceful
 
 	# 3 clone Jenkins job
-	XML='/home/sappletsjenkins/temp.xml'
-	curl -X GET http://localhost:7080/job/$REPO-template/config.xml  | sed "s/BRANCH_NAME/$BRANCH/g" > "$XML"
-	curl -X POST -H "Content-Type: text/xml" --data-binary "@$XML" "http://localhost:7080/createItem?name=$REPO-$BRANCH"
+	XML='/home/buildbot/magicBuild/template/temp.xml'
+	curl --silent -X GET http://localhost:$JENKINS_PORT/job/$REPO-template/config.xml  | sed "s/BRANCH_NAME/$BRANCH/g" > "$XML"
+	curl --silent -X POST -H "Content-Type: text/xml" --data-binary "@$XML" "http://localhost:$JENKINS_PORT/createItem?name=$REPO-$BRANCH"
 	rm $XML
 fi
 
+
 # Blast previous code
-rm -rf $SITE/*
+sudo -u buildbot sh -c "rm -rf $SITE/*"
 
 # Make directory if it doesn't exist
-mkdir -p $SITE
+sudo -u buildbot sh -c "mkdir -p $SITE"
 
 # Export HEAD of branch into site
-git archive $BRANCH | tar -xC $SITE
+sudo -u buildbot sh -c "git archive $BRANCH | tar -xC $SITE"
 
 # Call Jenkins build
-curl --silent http://localhost:7080/job/$REPO-$BRANCH/build
+#curl --silent http://localhost:$JENKINS_PORT/job/$REPO-$BRANCH/build
+alfred -s http://localhost:$JENKINS_PORT -j $REPO-$BRANCH -v
+
+sudo -u buildbot sh -c"git push github HEAD:$BRANCH"
+
+echo "Check progress at http://$HOST:$JENKINS_PORT/job/$REPO-$BRANCH/"

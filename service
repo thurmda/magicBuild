@@ -1,7 +1,7 @@
 
 #Server for testing agents
-lib/testPusher.js 7001 7002 &
+lib/testPusher.js 6001 6002 &
 
 #Jenkins
-java -jar lib/jenkins.war --httpPort=7080 --ajp13Port=7008 &
+java -jar lib/jenkins.war --httpPort=$JENKINS_PORT --ajp13Port=6008 &
 
